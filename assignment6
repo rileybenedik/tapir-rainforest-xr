@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tapir's Rainforest - Interactive XR Experience</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a2f1a; color: white; overflow: hidden; }
+        #container { width: 100vw; height: 100vh; }
+        #ui { position: absolute; top: 0; left: 0; right: 0; padding: 20px; background: linear-gradient(180deg, rgba(26,47,26,0.9) 0%, transparent 100%); z-index: 100; pointer-events: none; }
+        #ui > * { pointer-events: auto; }
+        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100; flex-wrap: wrap; justify-content: center; }
+        .btn { padding: 10px 20px; background: #2d5016; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; }
+        .btn:hover { background: #3d6b1f; transform: translateY(-2px); }
+        .btn:disabled { background: #374151; cursor: not-allowed; }
+        .btn.ar { background: #10b981; }
+        .btn.ar:hover { background: #059669; }
+        .btn.vr { background: #8b5cf6; }
+        .btn.vr:hover { background: #7c3aed; }
+        #info { background: rgba(255,255,255,0.95); padding: 15px 20px; border-radius: 8px; backdrop-filter: blur(10px); max-width: 450px; border: 2px solid rgba(200, 200, 200, 0.5); }
+        h1 { font-size: 24px; margin-bottom: 5px; color: #2d5016; }
+        #status { color: #374151; font-size: 14px; }
+        #instructions { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(255,255,255,0.98); padding: 30px; border-radius: 12px; max-width: 500px; border: 3px solid rgba(200, 200, 200, 0.5); z-index: 200; }
+        #instructions h2 { margin-bottom: 15px; color: #2d5016; }
+        #instructions p { color: #374151; line-height: 1.6; margin: 15px 0; font-size: 14px; }
+        #fileInput { display: none; }
+        .hidden { display: none !important; }
+        #tapir-info { position: absolute; top: 100px; right: 20px; background: rgba(255,255,255,0.95); padding: 20px; border-radius: 8px; max-width: 300px; backdrop-filter: blur(10px); border: 2px solid rgba(200, 200, 200, 0.5); max-height: 60vh; overflow-y: auto; }
+        #tapir-info h3 { color: #2d5016; margin-bottom: 10px; font-size: 16px; }
+        #tapir-info p { color: #374151; line-height: 1.5; font-size: 12px; margin: 8px 0; }
+        #environment-controls { position: absolute; top: 100px; left: 20px; background: rgba(255,255,255,0.95); padding: 15px; border-radius: 8px; border: 2px solid rgba(200, 200, 200, 0.5); backdrop-filter: blur(10px); }
+        #environment-controls h3 { color: #2d5016; font-size: 14px; margin-bottom: 10px; }
+        .env-btn { display: block; width: 100%; margin: 5px 0; padding: 8px 12px; background: #2d5016; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.3s; }
+        .env-btn:hover { background: #3d6b1f; }
+        .env-btn.active { background: #10b981; }
+        #scale-control { position: absolute; bottom: 80px; right: 20px; background: rgba(255,255,255,0.95); padding: 15px; border-radius: 8px; border: 2px solid rgba(200, 200, 200, 0.5); backdrop-filter: blur(10px); }
+        #scale-control label { color: #2d5016; font-size: 12px; display: block; margin-bottom: 8px; }
+        #scale-control input { width: 120px; }
+        .hotspot { position: absolute; width: 30px; height: 30px; background: rgba(74, 222, 128, 0.8); border: 2px solid #86efac; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.3s; animation: pulse 2s infinite; pointer-events: auto; }
+        .hotspot:hover { transform: scale(1.2); background: rgba(74, 222, 128, 1); }
+        @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
+        .hotspot-popup { position: absolute; background: rgba(255,255,255,0.98); padding: 12px 15px; border-radius: 8px; border: 2px solid rgba(200, 200, 200, 0.5); color: #374151; max-width: 200px; font-size: 11px; line-height: 1.4; pointer-events: none; z-index: 150; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div id="ui">
+        <div id="info">
+            <h1>🌿 Tapir's Rainforest Adventure</h1>
+            <div id="status">Load your stuffed tapir to begin</div>
+        </div>
+    </div>
+    
+    <div id="instructions">
+        <h2>🦫 Welcome to the Interactive Rainforest!</h2>
+        <p>Experience a living jungle with your stuffed tapir</p>
+        <p style="font-size: 12px; margin-top: 10px;">✨ Swaying plants • 🦋 Wildlife • 💧 Water • 🌙 Day/Night • 🌧️ Rain • 🔊 Sounds</p>
+        <button class="btn" style="margin-top: 15px;" onclick="document.getElementById('fileInput').click()">
+            🦫 Load Tapir Model
+        </button>
+    </div>
+    
+    <div id="tapir-info" class="hidden">
+        <h3>🦫 About Tapirs</h3>
+        <p><strong>Habitat:</strong> Tropical rainforests near water in Central/South America and Southeast Asia</p>
+        <p><strong>Diet:</strong> Herbivores - fruits, leaves, aquatic plants. They spread seeds as "forest gardeners"!</p>
+        <p><strong>Behavior:</strong> Excellent swimmers, most active at dawn/dusk</p>
+        <p><strong>Features:</strong> Flexible snout for grabbing food, 330-700 lbs, 2.5-4 feet tall</p>
+        <p><strong>Conservation:</strong> All 5 species are threatened. Protect rainforests to save tapirs!</p>
+        <p><strong>Fun Facts:</strong> Baby tapirs have stripes for camouflage. They've existed 20+ million years!</p>
+    </div>
+    
+    <div id="environment-controls" class="hidden">
+        <h3>🌍 Environment</h3>
+        <button class="env-btn" id="dayNightBtn" onclick="toggleDayNight()">🌙 Night Mode</button>
+        <button class="env-btn" id="rainBtn" onclick="toggleRain()">🌧️ Toggle Rain</button>
+        <button class="env-btn active" id="soundBtn" onclick="toggleSound()">🔊 Sounds ON</button>
+    </div>
+    
+    <div id="scale-control" class="hidden">
+        <label>Tapir Size: <span id="scaleValue">1.0x</span></label>
+        <input type="range" id="scaleSlider" min="0.5" max="3" step="0.1" value="1">
+    </div>
+    
+    <div id="controls" class="hidden">
+        <button class="btn ar" id="arButton" disabled>🌴 AR</button>
+        <button class="btn vr" id="vrButton" disabled>🦜 VR</button>
+        <button class="btn" onclick="document.getElementById('fileInput').click()">Change</button>
+    </div>
+    
+    <input type="file" id="fileInput" accept=".gltf,.glb">
+
+    <script type="module">
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/OrbitControls.js';
+        import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
+        
+        let scene, camera, renderer, controls, model, modelScale = 1;
+        let reticle, hitTestSource, hitTestSourceRequested = false;
+        let isDayMode = true, isRaining = false, soundEnabled = true;
+        let plants = [], butterflies = [], birds = [], rainParticles;
+        
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.Fog(0x87CEEB, 15, 50);
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 100);
+            camera.position.set(0, 1.6, 5);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.xr.enabled = true;
+            renderer.shadowMap.enabled = true;
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            createLighting();
+            createForestFloor();
+            createVegetation();
+            createWater();
+            createWildlife();
+            createRain();
+            setupControls();
+            setupXR();
+            
+            animate();
+            window.addEventListener('resize', onWindowResize);
+            checkXRSupport();
+        }
+        
+        function createLighting() {
+            const ambientLight = new THREE.AmbientLight(0xffffee, 0.6);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffcc, 1.2);
+            dirLight.position.set(10, 20, 5);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+            window.mainLight = dirLight;
+            
+            const fillLight = new THREE.DirectionalLight(0x88ccff, 0.3);
+            fillLight.position.set(-5, 10, -5);
+            scene.add(fillLight);
+            
+            const hemiLight = new THREE.HemisphereLight(0x88ff88, 0x4a5d3f, 0.5);
+            scene.add(hemiLight);
+        }
+        
+        function createForestFloor() {
+            const groundGeo = new THREE.PlaneGeometry(100, 100, 100, 100);
+            const positions = groundGeo.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i + 2] = Math.sin(positions[i] * 0.1) * 0.3 + Math.cos(positions[i + 1] * 0.15) * 0.2 + Math.random() * 0.15;
+            }
+            groundGeo.attributes.position.needsUpdate = true;
+            groundGeo.computeVertexNormals();
+            
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.95 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            ground.name = 'ground';
+            scene.add(ground);
+        }
+        
+        function createVegetation() {
+            // Trees
+            for (let i = 0; i < 12; i++) {
+                const trunk = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.4, 8, 8),
+                    new THREE.MeshStandardMaterial({ color: 0x4a3326, roughness: 0.9 })
+                );
+                trunk.position.set((Math.random() - 0.5) * 40, 4, (Math.random() - 0.5) * 40);
+                trunk.castShadow = true;
+                scene.add(trunk);
+                
+                const canopy = new THREE.Mesh(
+                    new THREE.SphereGeometry(3 + Math.random() * 2, 8, 8),
+                    new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.3, 0.6, 0.25) })
+                );
+                canopy.position.copy(trunk.position);
+                canopy.position.y += 6;
+                canopy.castShadow = true;
+                scene.add(canopy);
+            }
+            
+            // Animated plants
+            for (let i = 0; i < 25; i++) {
+                const leafGeo = new THREE.PlaneGeometry(2, 3);
+                const leafMat = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color().setHSL(0.3 + Math.random() * 0.1, 0.7, 0.35),
+                    side: THREE.DoubleSide
+                });
+                const leaf = new THREE.Mesh(leafGeo, leafMat);
+                leaf.position.set((Math.random() - 0.5) * 35, 1 + Math.random() * 2, (Math.random() - 0.5) * 35);
+                leaf.rotation.y = Math.random() * Math.PI * 2;
+                leaf.castShadow = true;
+                scene.add(leaf);
+                plants.push({ mesh: leaf, offset: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() * 0.5 });
+            }
+            
+            // Bushes
+            for (let i = 0; i < 30; i++) {
+                const bush = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.5 + Math.random() * 0.5, 6, 6),
+                    new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.32, 0.65, 0.3) })
+                );
+                bush.position.set((Math.random() - 0.5) * 35, 0.3, (Math.random() - 0.5) * 35);
+                bush.scale.y = 0.6;
+                bush.castShadow = true;
+                scene.add(bush);
+            }
+            
+            // Flowers
+            for (let i = 0; i < 20; i++) {
+                const flower = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.15, 8, 8),
+                    new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5), emissive: new THREE.Color().setHSL(Math.random(), 0.5, 0.1) })
+                );
+                flower.position.set((Math.random() - 0.5) * 30, 0.2, (Math.random() - 0.5) * 30);
+                scene.add(flower);
+            }
+        }
+        
+        function createWater() {
+            const waterGeo = new THREE.CircleGeometry(4, 32);
+            const waterMat = new THREE.MeshStandardMaterial({
+                color: 0x4a9eff,
+                roughness: 0.1,
+                metalness: 0.8,
+                transparent: true,
+                opacity: 0.7
+            });
+            const water = new THREE.Mesh(waterGeo, waterMat);
+            water.rotation.x = -Math.PI / 2;
+            water.position.set(-8, 0.1, -8);
+            water.receiveShadow = true;
+            scene.add(water);
+        }
+        
+        function createWildlife() {
+            // Butterflies
+            for (let i = 0; i < 8; i++) {
+                const butterflyGeo = new THREE.SphereGeometry(0.1, 8, 8);
+                const butterflyMat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5) });
+                const butterfly = new THREE.Mesh(butterflyGeo, butterflyMat);
+                butterfly.position.set((Math.random() - 0.5) * 30, 1 + Math.random() * 3, (Math.random() - 0.5) * 30);
+                scene.add(butterfly);
+                butterflies.push({
+                    mesh: butterfly,
+                    offset: Math.random() * Math.PI * 2,
+                    speed: 0.3 + Math.random() * 0.5,
+                    radius: 3 + Math.random() * 2,
+                    center: butterfly.position.clone()
+                });
+            }
+            
+            // Birds
+            for (let i = 0; i < 5; i++) {
+                const birdGeo = new THREE.SphereGeometry(0.15, 8, 8);
+                const birdMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+                const bird = new THREE.Mesh(birdGeo, birdMat);
+                bird.position.set((Math.random() - 0.5) * 40, 5 + Math.random() * 5, (Math.random() - 0.5) * 40);
+                scene.add(bird);
+                birds.push({
+                    mesh: bird,
+                    offset: Math.random() * Math.PI * 2,
+                    speed: 0.5 + Math.random() * 0.3,
+                    radius: 8 + Math.random() * 4,
+                    center: bird.position.clone()
+                });
+            }
+        }
+        
+        function createRain() {
+            const rainGeo = new THREE.BufferGeometry();
+            const rainCount = 1000;
+            const positions = new Float32Array(rainCount * 3);
+            
+            for (let i = 0; i < rainCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 50;
+                positions[i + 1] = Math.random() * 20;
+                positions[i + 2] = (Math.random() - 0.5) * 50;
+            }
+            
+            rainGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const rainMat = new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.1, transparent: true, opacity: 0.6 });
+            rainParticles = new THREE.Points(rainGeo, rainMat);
+            rainParticles.visible = false;
+            scene.add(rainParticles);
+        }
+        
+        function setupControls() {
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            const moveSpeed = 0.15;
+            const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
+            
+            window.addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                if (key in keys) keys[key] = true;
+            });
+            
+            window.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                if (key in keys) keys[key] = false;
+            });
+            
+            window.updateMovement = () => {
+                if (!renderer.xr.isPresenting) {
+                    const direction = new THREE.Vector3();
+                    camera.getWorldDirection(direction);
+                    const forward = direction.clone();
+                    forward.y = 0;
+                    forward.normalize();
+                    const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize();
+                    const movement = new THREE.Vector3();
+                    
+                    if (keys.w) movement.add(forward.multiplyScalar(moveSpeed));
+                    if (keys.s) movement.add(forward.multiplyScalar(-moveSpeed));
+                    if (keys.a) movement.add(right.multiplyScalar(-moveSpeed));
+                    if (keys.d) movement.add(right.multiplyScalar(moveSpeed));
+                    
+                    camera.position.add(movement);
+                    controls.target.add(movement);
+                    
+                    if (keys.e) { camera.position.y += moveSpeed; controls.target.y += moveSpeed; }
+                    if (keys.q) { camera.position.y -= moveSpeed; controls.target.y -= moveSpeed; }
+                }
+            };
+            
+            document.getElementById('scaleSlider').addEventListener('input', (e) => {
+                modelScale = parseFloat(e.target.value);
+                document.getElementById('scaleValue').textContent = modelScale.toFixed(1) + 'x';
+                if (model) {
+                    const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const baseScale = 1.5 / maxDim;
+                    model.scale.setScalar(baseScale * modelScale);
+                }
+            });
+        }
+        
+        function setupXR() {
+            const reticleGeo = new THREE.RingGeometry(0.15, 0.2, 32);
+            const reticleMat = new THREE.MeshBasicMaterial({ color: 0x4ade80 });
+            reticle = new THREE.Mesh(reticleGeo, reticleMat);
+            reticle.matrixAutoUpdate = false;
+            reticle.visible = false;
+            scene.add(reticle);
+            
+            const controller = renderer.xr.getController(0);
+            controller.addEventListener('select', () => {
+                if (reticle.visible && model) model.position.setFromMatrixPosition(reticle.matrix);
+            });
+            scene.add(controller);
+        }
+        
+        function animate() {
+            renderer.setAnimationLoop((time, frame) => {
+                const t = time * 0.001;
+                
+                // Animate plants
+                plants.forEach(plant => {
+                    plant.mesh.rotation.z = Math.sin(t * plant.speed + plant.offset) * 0.1;
+                });
+                
+                // Animate butterflies
+                butterflies.forEach(bf => {
+                    const angle = t * bf.speed + bf.offset;
+                    bf.mesh.position.x = bf.center.x + Math.cos(angle) * bf.radius;
+                    bf.mesh.position.z = bf.center.z + Math.sin(angle) * bf.radius;
+                    bf.mesh.position.y = bf.center.y + Math.sin(angle * 2) * 0.5;
+                });
+                
+                // Animate birds
+                birds.forEach(bird => {
+                    const angle = t * bird.speed + bird.offset;
+                    bird.mesh.position.x = bird.center.x + Math.cos(angle) * bird.radius;
+                    bird.mesh.position.z = bird.center.z + Math.sin(angle) * bird.radius;
+                    bird.mesh.position.y = bird.center.y + Math.sin(angle * 0.5) * 2;
+                });
+                
+                // Animate rain
+                if (rainParticles.visible) {
+                    const positions = rainParticles.geometry.attributes.position.array;
+                    for (let i = 1; i < positions.length; i += 3) {
+                        positions[i] -= 0.3;
+                        if (positions[i] < 0) positions[i] = 20;
+                    }
+                    rainParticles.geometry.attributes.position.needsUpdate = true;
+                }
+                
+                if (frame) {
+                    const referenceSpace = renderer.xr.getReferenceSpace();
+                    const session = renderer.xr.getSession();
+                    
+                    if (!hitTestSourceRequested && session) {
+                        session.requestReferenceSpace('viewer').then(refSpace => {
+                            session.requestHitTestSource({ space: refSpace }).then(source => {
+                                hitTestSource = source;
+                            });
+                        });
+                        hitTestSourceRequested = true;
+                    }
+                    
+                    if (hitTestSource) {
+                        const hitTestResults = frame.getHitTestResults(hitTestSource);
+                        if (hitTestResults.length > 0) {
+                            const hit = hitTestResults[0];
+                            reticle.visible = true;
+                            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+                        }
+                    }
+                } else {
+                    window.updateMovement();
+                    controls.update();
+                }
+                
+                renderer.render(scene, camera);
+            });
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        async function checkXRSupport() {
+            if ('xr' in navigator) {
+                const ar = await navigator.xr.isSessionSupported('immersive-ar');
+                const vr = await navigator.xr.isSessionSupported('immersive-vr');
+                if (ar) document.getElementById('arButton').disabled = false;
+                if (vr) document.getElementById('vrButton').disabled = false;
+            }
+        }
+        
+        function loadModel(file) {
+            document.getElementById('status').textContent = 'Loading tapir...';
+            const loader = new GLTFLoader();
+            const url = URL.createObjectURL(file);
+            
+            loader.load(url, (gltf) => {
+                if (model) scene.remove(model);
+                model = gltf.scene;
+                
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = (1.5 / maxDim) * modelScale;
+                model.scale.multiplyScalar(scale);
+                model.position.sub(center.multiplyScalar(scale));
+                model.position.y = 0.3;
+                
+                model.traverse(child => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                scene.add(model);
+                
+                document.getElementById('instructions').classList.add('hidden');
+                document.getElementById('controls').classList.remove('hidden');
+                document.getElementById('tapir-info').classList.remove('hidden');
+                document.getElementById('environment-controls').classList.remove('hidden');
+                document.getElementById('scale-control').classList.remove('hidden');
+                document.getElementById('status').textContent = 'Explore the rainforest! WASD to move 🌿';
+                
+                camera.position.set(0, 1.6, 5);
+                controls.target.set(0, 1, 0);
+                controls.update();
+                
+                createHotspots();
+                URL.revokeObjectURL(url);
+            }, undefined, (error) => {
+                console.error(error);
+                document.getElementById('status').textContent = 'Error loading model';
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        function createHotspots() {
+            const hotspots = [
+                { pos: [-8, -8], text: "💧 Water Source: Tapirs love swimming and spend hours in water to cool off!" },
+                { pos: [3, -5], text: "🌺 Tropical Flowers: Tapirs eat over 100 plant species, helping spread seeds!" },
+                { pos: [-6, 2], text: "🌳 Forest Canopy: Dense trees protect tapirs from predators and provide shade" }
+            ];
+            
+            hotspots.forEach((hs, i) => {
+                const hotspot = document.createElement('div');
+                hotspot.className = 'hotspot';
+                hotspot.innerHTML = '💚';
+                hotspot.style.left = `${50 + hs.pos[0] * 3}%`;
+                hotspot.style.top = `${50 + hs.pos[1] * 3}%`;
+                
+                const popup = document.createElement('div');
+                popup.className = 'hotspot-popup hidden';
+                popup.textContent = hs.text;
+                
+                hotspot.addEventListener('click', () => {
+                    document.querySelectorAll('.hotspot-popup').forEach(p => p.classList.add('hidden'));
+                    popup.classList.toggle('hidden');
+                    if (!popup.classList.contains('hidden')) {
+                        popup.style.left = hotspot.style.left;
+                        popup.style.top = (parseFloat(hotspot.style.top) + 5) + '%';
+                    }
+                });
+                
+                document.body.appendChild(hotspot);
+                document.body.appendChild(popup);
+            });
+        }
+        
+        window.toggleDayNight = () => {
+            isDayMode = !isDayMode;
+            const btn = document.getElementById('dayNightBtn');
+            
+            if (isDayMode) {
+                scene.background = new THREE.Color(0x87CEEB);
+                scene.fog.color = new THREE.Color(0x87CEEB);
+                window.mainLight.intensity = 1.2;
+                btn.textContent = '🌙 Night Mode';
+                btn.classList.remove('active');
+            } else {
+                scene.background = new THREE.Color(0x0a0a1a);
+                scene.fog.color = new THREE.Color(0x0a0a1a);
+                window.mainLight.intensity = 0.2;
+                btn.textContent = '☀️ Day Mode';
+                btn.classList.add('active');
+            }
+        };
+        
+        window.toggleRain = () => {
+            isRaining = !isRaining;
+            rainParticles.visible = isRaining;
+            const btn = document.getElementById('rainBtn');
+            btn.classList.toggle('active');
+            btn.textContent = isRaining ? '☀️ Stop Rain' : '🌧️ Toggle Rain';
+        };
+        
+        window.toggleSound = () => {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('soundBtn');
+            btn.classList.toggle('active');
+            btn.textContent = soundEnabled ? '🔊 Sounds ON' : '🔇 Sounds OFF';
+        };
+        
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) loadModel(e.target.files[0]);
+        });
+        
+        document.getElementById('arButton').addEventListener('click', async () => {
+            try {
+                const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
+                scene.getObjectByName('ground').visible = false;
+                scene.background = null;
+                scene.fog = null;
+                await renderer.xr.setSession(session);
+                session.addEventListener('end', () => {
+                    scene.getObjectByName('ground').visible = true;
+                    scene.background = new THREE.Color(isDayMode ? 0x87CEEB : 0x0a0a1a);
+                    scene.fog = new THREE.Fog(scene.background, 15, 50);
+                    hitTestSource = null;
+                    hitTestSourceRequested = false;
+                });
+            } catch (e) {
+                alert('AR not supported. Use Android Chrome or iOS Safari 13+');
+            }
+        });
+        
+        document.getElementById('vrButton').addEventListener('click', async () => {
+            try {
+                const session = await navigator.xr.requestSession('immersive-vr');
+                await renderer.xr.setSession(session);
+            } catch (e) {
+                alert('VR not supported');
+            }
+        });
+        
+        init();
+    </script>
+</body>
+</html>
